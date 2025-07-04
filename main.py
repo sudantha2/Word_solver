@@ -318,13 +318,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     """Start the bot"""
-    import os
-    TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    
-    if not TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN environment variable not set!")
-        print("Error: Please set TELEGRAM_BOT_TOKEN in Secrets")
-        exit(1)
+    TOKEN = '7695188163:AAFLPNDuxRIJkEkUMpG_Qijfi7-OoILOMzM'
     
     # Create application
     application = Application.builder().token(TOKEN).build()
@@ -350,4 +344,4 @@ if __name__ == '__main__':
         print("Error: Could not load words from words.txt")
         exit(1)
     main()
-  
+    
