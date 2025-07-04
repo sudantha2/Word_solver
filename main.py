@@ -148,6 +148,20 @@ def score_word(word, letter_freq):
             used_letters.add(char)
     return score
 
+def word_matches_clue(word, guess_word, emoji_result):
+    """Check if a word matches a single guess clue"""
+    for i, (guess_char, emoji) in enumerate(zip(guess_word, emoji_result)):
+        if emoji == '🟩':  # Green - correct letter, correct position
+            if word[i] != guess_char:
+                return False
+        elif emoji == '🟨':  # Yellow - correct letter, wrong position
+            if guess_char not in word or word[i] == guess_char:
+                return False
+        elif emoji == '🟥':  # Red - letter not in word
+            if guess_char in word:
+                return False
+    return True
+
 def get_best_guess(words):
     """Get the best next guess from remaining words"""
     if not words:
@@ -209,9 +223,56 @@ async def other_suggestions(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     remaining_words = filter_words_by_clues(WORD_LIST, user_sessions[user_id])
     
     if not remaining_words:
-        await update.message.reply_text(
-            "🚫 No words match your clues! Use /reset to start over."
-        )
+        # No exact matches, but provide helpful alternatives
+        response_parts = ["🚫 **No words match all clues perfectly!**", ""]
+        
+        # Find words that match the most clues
+        word_scores = {}
+        for word in WORD_LIST:
+            matches = 0
+            for guess_word, emoji_result in user_sessions[user_id]:
+                if word_matches_clue(word, guess_word, emoji_result):
+                    matches += 1
+            if matches > 0:
+                word_scores[word] = matches
+        
+        if word_scores:
+            # Sort by number of matching clues
+            sorted_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)
+            max_matches = sorted_words[0][1]
+            
+            response_parts.append(f"🔍 **Best partial matches** (matching {max_matches}/{len(user_sessions[user_id])} clues):")
+            
+            # Group by number of matches
+            current_matches = max_matches
+            words_with_current_matches = [word for word, matches in sorted_words if matches == current_matches]
+            
+            # Get letter frequency for scoring within the group
+            letter_freq = get_letter_frequency(words_with_current_matches)
+            scored_words = [(word, score_word(word, letter_freq)) for word in words_with_current_matches]
+            scored_words.sort(key=lambda x: x[1], reverse=True)
+            
+            top_words = [f"`{word.upper()}`" for word, _ in scored_words[:8]]
+            response_parts.append(f"🥇 **Top picks:** {', '.join(top_words[:3])}")
+            if len(top_words) > 3:
+                response_parts.append(f"🥈 **Good options:** {', '.join(top_words[3:6])}")
+            if len(top_words) > 6:
+                response_parts.append(f"🥉 **Other choices:** {', '.join(top_words[6:8])}")
+        
+        # Suggest some high-frequency common words
+        common_words = ['about', 'other', 'which', 'their', 'would', 'there', 'could', 'still', 'after', 'being']
+        available_common = [word for word in common_words if word in WORD_LIST]
+        if available_common:
+            response_parts.append("")
+            response_parts.append("💡 **Try common words:**")
+            common_formatted = [f"`{word.upper()}`" for word in available_common[:5]]
+            response_parts.append(f"   {', '.join(common_formatted)}")
+        
+        response_parts.append("")
+        response_parts.append("🔄 Use /reset to start over")
+        
+        response = "\n".join(response_parts)
+        await update.message.reply_text(response, parse_mode='Markdown')
         return
     
     if len(remaining_words) == 1:
@@ -279,10 +340,70 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     remaining_words = filter_words_by_clues(WORD_LIST, user_sessions[user_id])
     
     if not remaining_words:
-        await update.message.reply_text(
-            "🚫 No words match your clues! Please check your input.\n"
-            "Use /reset to start over or /other for alternatives."
-        )
+        # Analyze each guess individually to provide helpful feedback
+        response_parts = ["🚫 **No words match all your clues!**", ""]
+        
+        # Show analysis of each guess
+        response_parts.append("📊 **Clue Analysis:**")
+        for i, (guess_word, emoji_result) in enumerate(user_sessions[user_id], 1):
+            response_parts.append(f"  {i}. `{guess_word.upper()}` {emoji_result}")
+        
+        # Try to find words that match most clues
+        best_matches = []
+        max_matches = 0
+        
+        for word in WORD_LIST:
+            matches = 0
+            for guess_word, emoji_result in user_sessions[user_id]:
+                if word_matches_clue(word, guess_word, emoji_result):
+                    matches += 1
+            
+            if matches > max_matches:
+                max_matches = matches
+                best_matches = [word]
+            elif matches == max_matches and matches > 0:
+                best_matches.append(word)
+        
+        if best_matches and max_matches > 0:
+            response_parts.append("")
+            response_parts.append(f"🔍 **Words matching {max_matches}/{len(user_sessions[user_id])} clues:**")
+            top_matches = [f"`{w.upper()}`" for w in best_matches[:15]]
+            response_parts.append(f"   {', '.join(top_matches)}")
+            if len(best_matches) > 15:
+                response_parts.append(f"   ...and {len(best_matches) - 15} more")
+        
+        # Suggest most common letters from all guesses
+        all_letters = set()
+        for guess_word, emoji_result in user_sessions[user_id]:
+            for i, (letter, emoji) in enumerate(zip(guess_word, emoji_result)):
+                if emoji == '🟩':  # Green letters are confirmed
+                    all_letters.add(letter)
+                elif emoji == '🟨':  # Yellow letters are in the word
+                    all_letters.add(letter)
+        
+        if all_letters:
+            # Find words containing these confirmed letters
+            suggested_words = []
+            for word in WORD_LIST:
+                if any(letter in word for letter in all_letters):
+                    suggested_words.append(word)
+            
+            if suggested_words:
+                # Score by letter frequency
+                letter_freq = get_letter_frequency(suggested_words)
+                scored_words = [(word, score_word(word, letter_freq)) for word in suggested_words]
+                scored_words.sort(key=lambda x: x[1], reverse=True)
+                
+                response_parts.append("")
+                response_parts.append("💡 **Suggested words with confirmed letters:**")
+                top_suggestions = [f"`{word.upper()}`" for word, _ in scored_words[:10]]
+                response_parts.append(f"   {', '.join(top_suggestions)}")
+        
+        response_parts.append("")
+        response_parts.append("🔄 Use /reset to start over • /other for more suggestions")
+        
+        response = "\n".join(response_parts)
+        await update.message.reply_text(response, parse_mode='Markdown')
         return
     
     # Get best guess
@@ -344,4 +465,3 @@ if __name__ == '__main__':
         print("Error: Could not load words from words.txt")
         exit(1)
     main()
-    
