@@ -439,7 +439,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     """Start the bot"""
-    TOKEN = '7695188163:AAFLPNDuxRIJkEkUMpG_Qijfi7-OoILOMzM'
+    TOKEN = '7695188163:AAFhxOzz64WWeAn137pWJ5DD4lgynbZ1CiM'
     
     # Create application
     application = Application.builder().token(TOKEN).build()
